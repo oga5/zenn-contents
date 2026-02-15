@@ -6,6 +6,8 @@ topics: ["gch4"]
 published: true
 ---
 
+この記事はGoogle Cloud Japan AI Hackathon vol.4への参加記事です
+
 # マルチエージェント型ゲーム開発システム GameStudio 1984 の開発
 
 ## 1. システム概要
