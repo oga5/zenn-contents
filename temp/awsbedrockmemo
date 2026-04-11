@@ -1,0 +1,92 @@
+
+# AWS EC2でBedrock APIを利用するための設定メモ
+
+## 管理コンソールの作業
+
+### 管理者に必要な権限 (EC2 roleには付与する必要はない)
+- BedrockモデルカタログでClaudeの利用申請するために必要な権限 (PowerUserAccessにはある)
+{
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Effect": "Allow",
+            "Action": [
+                "bedrock:ListFoundationModels",
+                "bedrock:GetFoundationModel",
+                "bedrock:ListInferenceProfiles"
+                "bedrock:PutUseCaseForModelAccess",
+                "bedrock:GetUseCaseForModelAccess"
+            ],
+            "Resource": "*"
+        }
+    ]
+}
+
+- Claudeをmarketplaceでsubscribeするための権限 (PowerUserAccessにない)
+{
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Effect": "Allow",
+            "Action": [
+                "aws-marketplace:ViewSubscriptions",
+                "aws-marketplace:Subscribe",
+                "aws-marketplace:Unsubscribe"
+            ],
+            "Resource": "*"
+        }
+    ]
+}
+
+### AWS BedrockのモデルカタログからClaude sonnet 4.6を選択
+- Use caseを入力してSubmit
+- 10分程待ってから、プライグランドで開く
+- チャット入力欄に「こんにちは」などと入力して実行すればSubscribe開始 (ここでmarketplaceの権限が必要)
+  初回はエラーになるが、数分後にもう一度実行すれば会話が可能になる
+
+### 利用可能なInferenceProfileを確認 (cloud shellなどで実行)
+aws bedrock list-inference-profiles     --region ap-northeast-1     --query "inferenceProfileSummaries[].[inferenceProfileName, inferenceProfileArn]"     --output table
+
+(クロスリージョン推論するモデルはfoundation-modelとinference-profileの両方の許可が必要)
+
+InferenceProfileにはアカウントIDが含まれているため、以下の例ではアカウントID=123456789012としています
+
+### 推論実行のためのIAMポリシーを作成
+{
+	"Version": "2012-10-17",
+	"Statement": [
+		{
+			"Effect": "Allow",
+			"Action": [
+				"bedrock:InvokeModel",
+				"bedrock:InvokeModelWithResponseStream"
+			],
+			"Resource": [
+				"arn:aws:bedrock:ap-northeast-1::foundation-model/anthropic.claude-sonnet-4-6",
+				"arn:aws:bedrock:ap-northeast-3::foundation-model/anthropic.claude-sonnet-4-6",
+				"arn:aws:bedrock:ap-northeast-1::foundation-model/openai.gpt-oss-*",
+				"arn:aws:bedrock:*:123456789012:inference-profile/jp.anthropic.claude-sonnet-4-6"
+			]
+		}
+	]
+}
+
+### IAMロールに推論実行のためのIAMポリシーを追加
+
+### EC2にIAMロールを割り当て
+
+## EC2で推論のテスト
+aws bedrock-runtime invoke-model \
+    --model-id arn:aws:bedrock:ap-northeast-1:123456789012:inference-profile/jp.anthropic.claude-sonnet-4-6 \
+    --region ap-northeast-1  \
+    --body '{"anthropic_version": "bedrock-2023-05-31", "max_tokens": 100, "messages": [{"role": "user", "content": "Hello, Claude 4.6!"}]}'   \
+    --cli-binary-format raw-in-base64-out     response.json
+{
+    "contentType": "application/json"
+}
+
+cat response.json 
+{"model":"claude-sonnet-4-6","id":"msg_bdrk_01DcpZ9L36UiAgksqCoKT1Ex","type":"message","role":"assistant","content":[{"type":"text","text":"Hello! I should mention that I'm not actually Claude 4.6 — I'm **Claude**, made by Anthropic, but I don't have specific information about which version I am.\n\nThat said, I'm happy to chat or help you with whatever you need! What's on your mind? 😊"}],"stop_reason":"end_turn","stop_sequence":null,"usage":{"input_tokens":15,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"cache_creation":{"ephemeral_5m_input_tokens":0,"ephemeral_1h_input_tokens":0},"output_tokens":70}}
+
+
+
